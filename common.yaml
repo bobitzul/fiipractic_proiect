@@ -1,0 +1,72 @@
+---
+- name: Init 
+  hosts: all
+  become: yes
+  vars:
+    ca_local_path: "/usr/share/easy-rsa/3/pki/ca.crt"
+    ca_remote_path: "/etc/pki/ca-trust/source/anchors/ca.crt"
+  tasks:
+
+    - name: Deactivate firewalld
+      service:
+        name: firewalld
+        state: stopped
+        enabled: false
+
+    - name: Set timezone
+      community.general.timezone:
+        name: Europe/Bucharest
+
+    - name: Set RootLogin to prohibi-password
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        search_string: 'PermitRootLogin yes'
+        line: PermitRootLogin prohibit-password
+
+    - name: Add Docker repository
+      yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable
+        baseurl: https://download.docker.com/linux/centos/$releasever/$basearch/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        enabled: yes
+
+    - name: Install Docker
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: latest
+      with_items:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    
+    - name: Copy Root CA
+      copy:
+        src: "{{ ca_local_path }}"
+        dest: "{{ ca_remote_path }}"
+
+    - name: Install Root CA
+      command: /usr/bin/update-ca-trust extract
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+
+- name: Install gitlab
+  hosts: gitlab
+  become: yes
+  tasks:
+
+    - name: Update yum
+      yum:
+        name: "*"
+        state: latest       
+
+    - name: Install gitlab and runner 
+      ansible.builtin.package:
+        name:
+        - gitlab-runner
+        - gitlab-ce
+        state: latest
